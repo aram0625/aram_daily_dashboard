@@ -1,6 +1,6 @@
 # 판매 대시보드
 
-복지단 결산 데이터(월별 엑셀 / 일별 CSV)를 업로드하면 자동으로 파싱·시각화하는 사내용 웹 대시보드입니다. Streamlit Cloud + Supabase 조합으로 운영됩니다.
+결산 데이터(월별 엑셀 / 일별 CSV)를 업로드하면 자동으로 파싱·시각화하는 사내용 웹 대시보드입니다. Streamlit Cloud + Supabase 조합으로 운영됩니다.
 
 ---
 
@@ -16,16 +16,8 @@ sales-dashboard/
 ├── .streamlit/
 │   └── secrets.toml         # 로컬 전용 (GitHub에 절대 올리지 않음)
 │
-└── logo/                    # 업체 로고 이미지
-    ├── LG생활건강.png
-    ├── 비알코리아.png
-    ├── 에너자이저.png
-    ├── 라벨리.png
-    ├── 메디카.png
-    ├── 남양유업.png
-    ├── 나사라.png
-    ├── 삼립.png
-    └── 티젠.png
+└── logo/                    # 업체 로고 이미지 - supabase로 이관
+
 ```
 
 ### 클라우드 인프라
