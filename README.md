@@ -237,7 +237,7 @@ UPDATE memos   SET 업체 = 'LG생활건강' WHERE 업체 = '엘지';
 |---|---|
 | `Invalid key: <한글경로>` | Storage 경로에 한글이 들어감 → COMPANY_CODES 매핑 확인 |
 | `row violates row-level security policy` | RLS가 켜져 있음 → SQL Editor에서 `ALTER TABLE ... DISABLE ROW LEVEL SECURITY;` |
-| `KeyError: '엘지'` 등 | DB의 옛 업체명이 새 이름과 다름 → UPDATE 쿼리로 통일 |
+| `KeyError: '특정업체명'` 등 | DB의 옛 업체명이 새 이름과 다름 → UPDATE 쿼리로 통일 |
 | 도넛이 깨져 보임 | 음수 합계 업체가 섞임 → `overall[overall["판매금액"] > 0]` 필터 (이미 적용됨) |
 | 배포 후 `ModuleNotFoundError` | `requirements.txt` 에 빠진 패키지 있음 |
 | `secrets.toml` 관련 에러 | Streamlit Cloud의 Secrets 등록 누락 → Manage app → Settings → Secrets |
