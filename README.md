@@ -16,16 +16,7 @@ sales-dashboard/
 ├── .streamlit/
 │   └── secrets.toml         # 로컬 전용 (GitHub에 절대 올리지 않음)
 │
-└── logo/                    # 업체 로고 이미지
-    ├── LG생활건강.png
-    ├── 비알코리아.png
-    ├── 에너자이저.png
-    ├── 라벨리.png
-    ├── 메디카.png
-    ├── 남양유업.png
-    ├── 나사라.png
-    ├── 삼립.png
-    └── 티젠.png
+└── logo/                    # 업체 로고 이미지 - supabase로 이관 (보안유지) 
 ```
 
 ### 클라우드 인프라
