@@ -392,18 +392,23 @@ with tab_dash:
                                         axis=alt.Axis(labelAngle=0,
                                                       labelFontSize=18)),
                             )
+                            # 0701 추가 - 최고금액 25억
+                            Y_MAX = 2_500_000_000   # 25억 고정
+
                             bar = base_m.mark_bar(
                                 color=color, cornerRadiusTopLeft=3,
                                 cornerRadiusTopRight=3, size=35,
                             ).encode(
-                                y=alt.Y("판매금액:Q", title=None, axis=None),
+                                y=alt.Y("판매금액:Q", title=None, axis=None,
+                                        scale=alt.Scale(domain=[0, Y_MAX])),
                                 tooltip=[alt.Tooltip("월:N"),
                                          alt.Tooltip("판매금액:Q", format=",")],
                             )
                             text = base_m.mark_text(
                                 dy=-8, fontSize=11, color="#333",
                             ).encode(
-                                y=alt.Y("판매금액:Q"),
+                                y=alt.Y("판매금액:Q",
+                                        scale=alt.Scale(domain=[0, Y_MAX])),
                                 text=alt.Text("판매금액:Q", format=","),
                             )
                             st.altair_chart(
@@ -557,21 +562,24 @@ with tab_dash:
             common_action = str(existing.iloc[0].get("조치항목", "") or "")
         action = st.text_area("미납 조치항목", value=common_action)
 
+        # 0701 미납체크 안된 업체도 text수정되면 저장되게 저장
         if st.button("💾 미납현황 저장", key="save_memo"):
             try:
                 payload = []
                 for _, r in edited.iterrows():
-                    if not bool(r["미납여부"]):
+                    체크 = bool(r["미납여부"])
+                    내용 = str(r["미납내용"] or "").strip()
+                    if not 체크 and not 내용:      # 체크도 없고 내용도 없으면 건너뜀
                         continue
                     payload.append({
                         "날짜": date_key,
                         "업체": r["업체명"],
-                        "미납여부": True,
-                        "미납내용": str(r["미납내용"] or ""),
+                        "미납여부": 체크,           # 체크값 그대로 저장
+                        "미납내용": 내용,
                         "조치항목": action,
                     })
                 if not payload:
-                    st.warning("미납 체크된 업체가 없습니다.")
+                    st.warning("체크나 미납내용이 입력된 업체가 없습니다.")
                 else:
                     sb.table("memos").upsert(payload,
                                              on_conflict="날짜,업체").execute()
