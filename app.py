@@ -543,6 +543,8 @@ with tab_dash:
                          for c in COMPANIES],
             "미납내용": [str(by_company.get(c, {}).get("미납내용", "") or "")
                          for c in COMPANIES],
+            "조치항목": [str(by_company.get(c, {}).get("조치항목", "") or "")
+                         for c in COMPANIES],
         })
 
         edited = st.data_editor(
@@ -553,33 +555,30 @@ with tab_dash:
             column_config={
                 "업체명": st.column_config.TextColumn("업체명", disabled=True),
                 "미납여부": st.column_config.CheckboxColumn("미납", width="small"),
-                "미납내용": st.column_config.TextColumn("미납내용", width="large"),
+                "미납내용": st.column_config.TextColumn("미납내용", width="medium"),
+                "조치항목": st.column_config.TextColumn("조치항목", width="medium"),
             },
         )
 
-        common_action = ""
-        if not existing.empty:
-            common_action = str(existing.iloc[0].get("조치항목", "") or "")
-        action = st.text_area("미납 조치항목", value=common_action)
-
-        # 0701 미납체크 안된 업체도 text수정되면 저장되게 저장
+        # 0701 미납체크 안돼도, 내용/조치항목 있으면 업체별로 저장
         if st.button("💾 미납현황 저장", key="save_memo"):
             try:
                 payload = []
                 for _, r in edited.iterrows():
                     체크 = bool(r["미납여부"])
                     내용 = str(r["미납내용"] or "").strip()
-                    if not 체크 and not 내용:      # 체크도 없고 내용도 없으면 건너뜀
+                    조치 = str(r["조치항목"] or "").strip()
+                    if not 체크 and not 내용 and not 조치:   # 셋 다 비면 건너뜀
                         continue
                     payload.append({
                         "날짜": date_key,
                         "업체": r["업체명"],
-                        "미납여부": 체크,           # 체크값 그대로 저장
+                        "미납여부": 체크,
                         "미납내용": 내용,
-                        "조치항목": action,
+                        "조치항목": 조치,          # 업체별 값 그대로 저장
                     })
                 if not payload:
-                    st.warning("체크나 미납내용이 입력된 업체가 없습니다.")
+                    st.warning("입력된 업체가 없습니다.")
                 else:
                     sb.table("memos").upsert(payload,
                                              on_conflict="날짜,업체").execute()
