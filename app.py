@@ -547,13 +547,13 @@ with tab_dash:
 
         edited = st.data_editor(
             table_df,
-            key="memo_table",
+            key=f"memo_table_{date_key}",   # 날짜별로 key 분리
             use_container_width=True,
             hide_index=True,
             column_config={
                 "업체명": st.column_config.TextColumn("업체명", disabled=True),
-                "미납여부": st.column_config.CheckboxColumn("미납"),
-                "미납내용": st.column_config.TextColumn("미납내용"),
+                "미납여부": st.column_config.CheckboxColumn("미납", width="small"),
+                "미납내용": st.column_config.TextColumn("미납내용", width="large"),
             },
         )
 
