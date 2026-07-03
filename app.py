@@ -29,9 +29,11 @@ today = datetime.datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y년 %m월 %d�
 st.set_page_config(page_title="판매 대시보드", page_icon="📊", layout="wide")
 
 # 글씨 크기 줄이기
+# 글씨 크기 줄이기
 st.markdown("""
 <style>
 [data-testid="stMetricValue"] { font-size: 22px !important; }
+.block-container { padding-top: 2rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -412,7 +414,7 @@ with tab_dash:
                                 text=alt.Text("판매금액:Q", format=","),
                             )
                             st.altair_chart(
-                                alt.layer(bar, text).properties(height=280),
+                                alt.layer(bar, text).properties(height=220),
                                 use_container_width=True,
                             )
              # 행 사이 여백
@@ -525,9 +527,11 @@ with tab_dash:
             except Exception as e:
                 st.error(f"저장 실패: {e}")
 
-        # 미납현황
+        # 0703 미납현황 - 삼립 제외
         st.divider()
         st.subheader("미납현황")
+
+        MEMO_COMPANIES = [c for c in COMPANIES if c != "삼립"]   # 삼립 제외
 
         sel_date = st.date_input("날짜", value=datetime.date.today(),
                                  key="memo_date")
@@ -538,13 +542,13 @@ with tab_dash:
                      if not existing.empty else {}
 
         table_df = pd.DataFrame({
-            "업체명": COMPANIES,
+            "업체명": MEMO_COMPANIES,
             "미납여부": [bool(by_company.get(c, {}).get("미납여부", False))
-                         for c in COMPANIES],
+                         for c in MEMO_COMPANIES],
             "미납내용": [str(by_company.get(c, {}).get("미납내용", "") or "")
-                         for c in COMPANIES],
+                         for c in MEMO_COMPANIES],
             "조치항목": [str(by_company.get(c, {}).get("조치항목", "") or "")
-                         for c in COMPANIES],
+                         for c in MEMO_COMPANIES],
         })
 
         edited = st.data_editor(
