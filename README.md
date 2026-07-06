@@ -1,6 +1,6 @@
 # 판매 대시보드
 
-결산 데이터(월별 엑셀 / 일별 CSV)를 업로드하면 자동으로 파싱·시각화하는 사내용 웹 대시보드입니다. Streamlit Cloud + Supabase 조합으로 운영됩니다.
+복지단 결산 데이터(월별 엑셀 / 일별 CSV)를 업로드하면 자동으로 파싱·시각화하는 사내용 웹 대시보드입니다. Streamlit Cloud + Supabase 조합으로 운영됩니다.
 
 ---
 
@@ -16,8 +16,16 @@ sales-dashboard/
 ├── .streamlit/
 │   └── secrets.toml         # 로컬 전용 (GitHub에 절대 올리지 않음)
 │
-└── logo/                    # 업체 로고 이미지 - supabase로 이관
-
+└── logo/                    # 업체 로고 이미지
+    ├── LG생활건강.png
+    ├── 비알코리아.png
+    ├── 에너자이저.png
+    ├── 라벨리.png
+    ├── 메디카.png
+    ├── 남양유업.png
+    ├── 나사라.png
+    ├── 삼립.png
+    └── 티젠.png
 ```
 
 ### 클라우드 인프라
@@ -68,14 +76,14 @@ sales-dashboard/
 ### 월별 엑셀 (.xls / .xlsx)
 - 파일에서 "YYYY년 MM월" 찾아 월 추출
 - "금액 계" 행의 다음 줄에 있는 **판매금액 (col 25)** 사용
-- **업체명제외**은 예외: 지정된 16개 제품코드만 합산
+- **삼립**은 예외: 지정된 16개 제품코드만 합산
   - `220176, 220177, 220178, 230226, 230229, 230232, 240218, 240219, 240220, 250225, 250226, 250228, 260205, 260206, 260207, 260209`
 
 ### 일별 CSV (CP949 인코딩)
 - 파일명 앞 `YYYYMMDD` = 조회일 (그 달 1일~조회 전일까지의 **누적**)
 - 한 행 = 한 품목, **매출액 = 판매수량 × 공급단가**
 - 컬럼 위치: 판매수량 = 뒤에서 7번째, 공급단가 = 뒤에서 5번째 (제품명에 쉼표가 들어가도 안전)
-- (업체명)은 위 16개 제품코드만 합산
+- 삼립은 위 16개 제품코드만 합산
 
 ### Supabase 테이블 구조
 
@@ -128,7 +136,15 @@ uploads/
 ```
 
 업체명 → 영문 코드 매핑:
-- supabase storage 참고
+- LG생활건강 → `lg`
+- 비알코리아 → `br`
+- 에너자이저 → `energizer`
+- 라벨리 → `labelly`
+- 메디카 → `medica`
+- 남양유업 → `namyang`
+- 나사라 → `nasara`
+- 삼립 → `samlip`
+- 티젠 → `tjeen`
 
 ---
 
@@ -237,7 +253,7 @@ UPDATE memos   SET 업체 = 'LG생활건강' WHERE 업체 = '엘지';
 |---|---|
 | `Invalid key: <한글경로>` | Storage 경로에 한글이 들어감 → COMPANY_CODES 매핑 확인 |
 | `row violates row-level security policy` | RLS가 켜져 있음 → SQL Editor에서 `ALTER TABLE ... DISABLE ROW LEVEL SECURITY;` |
-| `KeyError: '특정업체명'` 등 | DB의 옛 업체명이 새 이름과 다름 → UPDATE 쿼리로 통일 |
+| `KeyError: '엘지'` 등 | DB의 옛 업체명이 새 이름과 다름 → UPDATE 쿼리로 통일 |
 | 도넛이 깨져 보임 | 음수 합계 업체가 섞임 → `overall[overall["판매금액"] > 0]` 필터 (이미 적용됨) |
 | 배포 후 `ModuleNotFoundError` | `requirements.txt` 에 빠진 패키지 있음 |
 | `secrets.toml` 관련 에러 | Streamlit Cloud의 Secrets 등록 누락 → Manage app → Settings → Secrets |
@@ -248,5 +264,5 @@ UPDATE memos   SET 업체 = 'LG생활건강' WHERE 업체 = '엘지';
 
 - **v1**: 로컬 Streamlit + JSON 파일 (사내 PC에서 실행)
 - **v2**: Streamlit Cloud + Supabase 전환, 탭 구조, 미납현황 RDB
-- **v3**: (특정업체명) 필터링, 한국 시간 표시, 콤마 포맷
+- **v3**: 삼립 제품코드 필터링, 한국 시간 표시, 콤마 포맷
 - **v4**: 카드 정렬(일별 매출 순), 도넛 바깥 라벨, 목표 설정 별도 탭
