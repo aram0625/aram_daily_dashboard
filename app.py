@@ -23,6 +23,9 @@ import streamlit as st
 from supabase import create_client
 from zoneinfo import ZoneInfo
 
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=15_000, key="auto_refresh")   # 0706 15초마다 새로고침
+
 # 날짜 
 today = datetime.datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y년 %m월 %d일")
 
@@ -755,7 +758,11 @@ with tab_hist:
             df = df[(df[date_col] >= sel_from) & (df[date_col] <= sel_to)]
 
     sort_cols = [date_col, "업체"] if "업체" in df.columns else [date_col]
-    df = df.sort_values(sort_cols).reset_index(drop=True)
+    if view.startswith("미납"):
+        df = df.sort_values(sort_cols, ascending=[False, True]) \
+               .reset_index(drop=True)
+    else:
+        df = df.sort_values(sort_cols).reset_index(drop=True)
 
     if "id" in df.columns:
         df = df.drop(columns=["id"])
