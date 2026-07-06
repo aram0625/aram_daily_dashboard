@@ -1,0 +1,7 @@
+streamlit
+pandas
+altair
+xlrd
+openpyxl
+supabase
+streamlit-autorefresh
