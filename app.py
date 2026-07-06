@@ -608,12 +608,11 @@ with tab_upload:
                        ["월별 (.xls/.xlsx)", "일별 (.csv)"],
                        horizontal=True, key="up_kind")
 
-    allow_multi = (up_kind.startswith("일별") and up_company == "남양유업")
-    if up_kind.startswith("일별"):
-        if up_company == "남양유업":
-            st.caption("※ 남양유업은 일별 파일 2개를 함께 올려주세요 (자동 합산).")
-        else:
-            st.caption("※ 일별 파일은 한 번에 하나씩 업로드합니다.")
+    allow_multi = (up_company == "남양유업")
+    if up_company == "남양유업":
+        st.caption("※ 남양유업은 월별/일별 모두 파일 2개를 함께 올려주세요 (자동 합산).")
+    elif up_kind.startswith("일별"):
+        st.caption("※ 일별 파일은 한 번에 하나씩 업로드합니다.")
 
     files = st.file_uploader(
         "파일을 끌어다 놓으세요" + (" (여러 개 가능)" if allow_multi else ""),
@@ -660,6 +659,23 @@ with tab_upload:
                         st.warning(f"⚠ {filename}: 월/판매금액을 못 찾았습니다.")
                         fail += 1
                     else:
+                        if up_company == "남양유업":
+                            existing = (sb.table("monthly")
+                                          .select("판매금액")
+                                          .eq("업체", up_company)
+                                          .eq("월", month)
+                                          .execute().data)
+                            if existing:
+                                prev = int(existing[0]["판매금액"])
+                                new_total = prev + sales
+                                st.write(f"✅ {filename} → {month} / "
+                                         f"기존 {prev:,} + 신규 {sales:,} "
+                                         f"= 합계 {new_total:,}원")
+                                sales = new_total
+                            else:
+                                st.write(f"✅ {filename} → {month} / {sales:,}원")
+                        else:
+                            st.write(f"✅ {filename} → {month} / {sales:,}원")
                         sb.table("monthly").upsert({
                             "업체": up_company, "월": month, "판매금액": sales,
                         }, on_conflict="업체,월").execute()
@@ -667,7 +683,6 @@ with tab_upload:
                             "업체": up_company, "종류": kind_slug,
                             "파일명": filename, "월": month,
                         }).execute()
-                        st.write(f"✅ {filename} → {month} / {sales:,}원")
                         ok += 1
                 else:
                     date, revenue = parse_daily(io.BytesIO(raw), filename, up_company)
