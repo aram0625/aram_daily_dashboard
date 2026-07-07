@@ -23,9 +23,6 @@ import streamlit as st
 from supabase import create_client
 from zoneinfo import ZoneInfo
 
-from streamlit_autorefresh import st_autorefresh
-st_autorefresh(interval=15_000, key="auto_refresh")   # 0706 15초마다 새로고침
-
 # 날짜 
 today = datetime.datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y년 %m월 %d일")
 
