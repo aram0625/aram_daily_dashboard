@@ -1,11 +1,6 @@
 streamlit==1.46.1
-
-pandas
-
-altair
-
-xlrd
-
-openpyxl
-
-supabase
+pandas==2.3.3
+altair==5.5.0
+xlrd==2.0.2
+openpyxl==3.1.5
+supabase==2.31.0
