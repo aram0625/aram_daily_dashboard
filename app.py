@@ -23,12 +23,22 @@ import streamlit as st
 from supabase import create_client
 from zoneinfo import ZoneInfo
 
-# 날짜 
-today = datetime.datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y년 %m월 %d일")
+
+# ----------------------------------------------------------------------
+# 날짜 (한국시간 기준)
+# ----------------------------------------------------------------------
+KST = ZoneInfo("Asia/Seoul")
+
+
+def today_kst() -> datetime.date:
+    """서버가 UTC라도 항상 한국 날짜를 돌려준다."""
+    return datetime.datetime.now(KST).date()
+
+
+today = datetime.datetime.now(KST).strftime("%Y년 %m월 %d일")
 
 st.set_page_config(page_title="판매 대시보드", page_icon="📊", layout="wide")
 
-# 글씨 크기 줄이기
 # 글씨 크기 줄이기
 st.markdown("""
 <style>
@@ -37,6 +47,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # ----------------------------------------------------------------------
 # 접근 비밀번호
 # ----------------------------------------------------------------------
@@ -44,13 +55,17 @@ def check_password():
     if st.session_state.get("auth_ok"):
         return True
 
-    st.title("🔒 아람비즈 가는길") 
+    st.title("🔒 아람비즈 가는길")
     st.caption("접근 비밀번호를 입력하세요.")
     pw = st.text_input("비밀번호", type="password",
                        label_visibility="collapsed")
     col_btn, _ = st.columns([1, 4])
     if col_btn.button("로그인", use_container_width=True):
-        if pw == st.secrets.get("APP_PASSWORD", ""):
+        expected = st.secrets.get("APP_PASSWORD", "")
+        if not expected:
+            st.error("APP_PASSWORD가 설정되지 않았습니다. "
+                     "Streamlit Cloud의 Secrets를 확인하세요.")
+        elif pw == expected:
             st.session_state["auth_ok"] = True
             st.rerun()
         else:
@@ -68,6 +83,7 @@ if not check_password():
 @st.cache_resource
 def get_supabase():
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
 
 sb = get_supabase()
 BUCKET = "uploads"
@@ -90,9 +106,23 @@ COMPANY_CODES = {
 }
 
 SELECTED_CODES = {
-    "삼립": {"220176","220177","220178","230226","230229","230232","240218",
-             "240219","240220","250225","250226","250228","260205","260206",
-             "260207","260209"},
+    "삼립": {"220176", "220177", "220178", "230226", "230229", "230232",
+             "240218", "240219", "240220", "250225", "250226", "250228",
+             "260205", "260206", "260207", "260209"},
+}
+
+# 일별 CSV 안에 들어있는 업체코드(3번째 열)로 업체를 검증한다.
+# 업로드 화면에 "파일 업체: OOO (코드)" 가 뜨므로, 그 코드를 보고 채워 넣으면 됨.
+VENDOR_TOKENS = {
+    "에너자이저": {"9bs"},
+    "메디카": {"1fo"},
+    "비알코리아": {"3aq"},
+    "남양유업": {"060", "b22"},
+    # "LG생활건강": {"???"},
+    # "라벨리": {"???"},
+    # "나사라": {"???"},
+    # "삼립": {"???"},
+    # "티젠": {"???"},
 }
 
 
@@ -101,10 +131,11 @@ def app_dir() -> str:
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
+
 BASE = app_dir()
 LOGO_DIR = os.path.join(BASE, "logo")
 
-# 로고 
+
 @st.cache_data(ttl=3600)   # 1시간 캐시 (이미지는 잘 안 바뀜)
 def logo_for(company: str):
     """Supabase Storage(logos 버킷)에서 로고 URL을 가져옴."""
@@ -112,9 +143,7 @@ def logo_for(company: str):
     if not code:
         return None
     try:
-        # Public 버킷이라 URL만 반환 (Streamlit이 알아서 다운로드)
-        url = sb.storage.from_("logos").get_public_url(f"{code}.png")
-        return url
+        return sb.storage.from_("logos").get_public_url(f"{code}.png")
     except Exception:
         return None
 
@@ -185,30 +214,81 @@ def parse_monthly(buf, filename, company=None):
     return month, total
 
 
+DATE_RE = re.compile(r"20\d{6}")
+
+
+def _num(v):
+    return float(str(v).replace(",", "").strip() or 0)
+
+
 def parse_daily(buf, filename, company=None):
+    """일별 CSV 파싱.
+
+    열 개수가 업체마다 다를 수 있으므로 끝에서 세지 않고,
+    각 행의 기준일(YYYYMMDD) 열을 찾아 기준점으로 삼는다.
+        판매수량 = 기준일 - 3
+        단가     = 기준일 - 1
+    반환값: (날짜, 매출액, meta)  — 실패 시 매출액은 None
+    """
     m = re.search(r"(20\d{6})", filename)
     if not m:
-        return None, None
+        return None, None, {"error": "파일명에서 날짜(YYYYMMDD)를 찾지 못했습니다."}
     s = m.group(1)
     date = f"{s[:4]}-{s[4:6]}-{s[6:8]}"
 
+    fm = re.match(r"20\d{6}_([^_]+)_", filename)
+    fname_token = fm.group(1).lower() if fm else None
+
     selected = SELECTED_CODES.get(company)
     text = buf.read().decode("cp949", errors="replace")
+    rows = [r for r in csv.reader(io.StringIO(text)) if len(r) >= 8]
+    if not rows:
+        return date, None, {"error": "읽을 수 있는 데이터 행이 없습니다."}
+
+    codes = {r[2].strip().lower() for r in rows}
+    names = {r[3].strip() for r in rows}
+    meta = {"코드": sorted(codes), "이름": sorted(names), "행수": len(rows),
+            "열수": sorted({len(r) for r in rows}), "제외": 0, "error": None}
+
+    # 파일명 코드 ↔ 파일 내용 코드 일치 확인
+    if fname_token and fname_token not in codes:
+        meta["error"] = f"파일명 코드 '{fname_token}' ≠ 파일 내용 {sorted(codes)}"
+        return date, None, meta
+
+    # 선택한 업체 ↔ 파일 업체 일치 확인 (VENDOR_TOKENS에 등록된 업체만)
+    allowed = VENDOR_TOKENS.get(company)
+    if allowed and not (codes & allowed):
+        meta["error"] = f"'{company}' 선택했는데 파일은 {sorted(names)}입니다."
+        return date, None, meta
+
     total = 0.0
-    for row in csv.reader(io.StringIO(text)):
-        if len(row) < 7:
+    for row in rows:
+        anchor = None
+        for i in range(len(row) - 1, 2, -1):
+            if DATE_RE.fullmatch(row[i].strip()):
+                anchor = i
+                break
+        if anchor is None:
+            meta["제외"] += 1
             continue
-        if selected:
-            code = row[4].strip() if len(row) > 4 else ""
-            if code not in selected:
-                continue
+        if selected and row[4].strip() not in selected:
+            continue
         try:
-            qty = float(row[-7])
-            price = float(row[-5])
+            qty = _num(row[anchor - 3])
+            price = _num(row[anchor - 1])
         except ValueError:
+            meta["제외"] += 1
+            continue
+        if price < 0:
+            meta["제외"] += 1
             continue
         total += qty * price
-    return date, int(round(total))
+
+    total = int(round(total))
+    if total < 0:
+        meta["error"] = f"합계가 음수({total:,}원)입니다. 파일 형식을 확인하세요."
+        return date, None, meta
+    return date, total, meta
 
 
 # ----------------------------------------------------------------------
@@ -217,13 +297,15 @@ def parse_daily(buf, filename, company=None):
 @st.cache_data(ttl=30)
 def fetch_monthly():
     rows = sb.table("monthly").select("*").order("월").execute().data
-    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["업체", "월", "판매금액"])
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["업체", "월", "판매금액"])
 
 
 @st.cache_data(ttl=30)
 def fetch_daily():
     rows = sb.table("daily").select("*").order("날짜").execute().data
-    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["업체", "날짜", "매출액"])
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["업체", "날짜", "매출액"])
 
 
 @st.cache_data(ttl=30)
@@ -281,7 +363,7 @@ with btn_col:
     if st.button("🔄 새로고침"):
         invalidate_cache()
         st.rerun()
-        
+
 monthly_df = fetch_monthly()
 daily_df = fetch_daily()
 TARGETS = fetch_targets()
@@ -294,16 +376,19 @@ else:
 
 
 # ======================================================================
-# 탭
+# 메뉴 (st.tabs 대신 라디오 네비게이션: 선택된 화면만 실행 → 겹침 현상 없음)
 # ======================================================================
-tab_dash, tab_upload, tab_hist, tab_target = st.tabs(
-    ["📊 대시보드", "📁 파일 업로드", "💰 매출 이력", "🎯 목표 설정"]
+TAB_DASH, TAB_UPLOAD, TAB_HIST, TAB_TARGET = (
+    "📊 대시보드", "📁 파일 업로드", "💰 매출 이력", "🎯 목표 설정"
 )
+nav = st.radio("메뉴", [TAB_DASH, TAB_UPLOAD, TAB_HIST, TAB_TARGET],
+               horizontal=True, label_visibility="collapsed", key="nav")
+st.divider()
 
 # ----------------------------------------------------------------------
 # 📊 대시보드
 # ----------------------------------------------------------------------
-with tab_dash:
+if nav == TAB_DASH:
     main_left, main_right = st.columns([3, 2])
 
     # ----- 왼쪽: 카드 그리드 -----
@@ -359,7 +444,8 @@ with tab_dash:
                                 unsafe_allow_html=True,
                             )
 
-                            m_col, t_col = st.columns([2, 1], vertical_alignment="center")
+                            m_col, t_col = st.columns([2, 1],
+                                                      vertical_alignment="center")
                             with m_col:
                                 st.metric(
                                     "일별 누적 매출액 (원)",
@@ -383,7 +469,7 @@ with tab_dash:
                                         unsafe_allow_html=True,
                                     )
 
-                        # 월별 막대그래프 (높이 키움: 170 → 240)
+                        # 월별 막대그래프
                         if sdf.empty:
                             st.caption("월별 데이터 없음")
                         else:
@@ -394,7 +480,6 @@ with tab_dash:
                                         axis=alt.Axis(labelAngle=0,
                                                       labelFontSize=18)),
                             )
-                            # 0701 추가 - 최고금액 25억
                             Y_MAX = 2_500_000_000   # 25억 고정
 
                             bar = base_m.mark_bar(
@@ -417,8 +502,9 @@ with tab_dash:
                                 alt.layer(bar, text).properties(height=220),
                                 use_container_width=True,
                             )
-             # 행 사이 여백
+            # 행 사이 여백
             st.write("")
+
     # ----- 오른쪽: 도넛 + 공지 + 미납 -----
     with main_right:
         st.subheader("전체 비중")
@@ -495,7 +581,7 @@ with tab_dash:
 
         notice_date = st.date_input(
             "공지 날짜",
-            value=datetime.date.today(),
+            value=today_kst(),
             key="notice_date",
         )
         notice_key = notice_date.isoformat()
@@ -527,14 +613,13 @@ with tab_dash:
             except Exception as e:
                 st.error(f"저장 실패: {e}")
 
-        # 0703 미납현황 - 삼립 제외
+        # 미납현황 - 삼립 제외
         st.divider()
         st.subheader("미납현황")
 
-        MEMO_COMPANIES = [c for c in COMPANIES if c != "삼립"]   # 삼립 제외
+        MEMO_COMPANIES = [c for c in COMPANIES if c != "삼립"]
 
-        sel_date = st.date_input("날짜", value=datetime.date.today(),
-                                 key="memo_date")
+        sel_date = st.date_input("날짜", value=today_kst(), key="memo_date")
         date_key = sel_date.isoformat()
 
         existing = fetch_memos(date_key)
@@ -564,7 +649,7 @@ with tab_dash:
             },
         )
 
-        # 0701 미납체크 안돼도, 내용/조치항목 있으면 업체별로 저장
+        # 미납체크 안돼도, 내용/조치항목 있으면 업체별로 저장
         if st.button("💾 미납현황 저장", key="save_memo"):
             try:
                 payload = []
@@ -572,14 +657,14 @@ with tab_dash:
                     체크 = bool(r["미납여부"])
                     내용 = str(r["미납내용"] or "").strip()
                     조치 = str(r["조치항목"] or "").strip()
-                    if not 체크 and not 내용 and not 조치:   # 셋 다 비면 건너뜀
+                    if not 체크 and not 내용 and not 조치:
                         continue
                     payload.append({
                         "날짜": date_key,
                         "업체": r["업체명"],
                         "미납여부": 체크,
                         "미납내용": 내용,
-                        "조치항목": 조치,          # 업체별 값 그대로 저장
+                        "조치항목": 조치,
                     })
                 if not payload:
                     st.warning("입력된 업체가 없습니다.")
@@ -596,7 +681,7 @@ with tab_dash:
 # ----------------------------------------------------------------------
 # 📁 파일 업로드
 # ----------------------------------------------------------------------
-with tab_upload:
+if nav == TAB_UPLOAD:
     st.subheader("파일 업로드")
     st.caption("선택한 업체와 종류에 맞게 파일을 올리면 자동으로 파싱돼 저장됩니다.")
 
@@ -650,8 +735,10 @@ with tab_upload:
                                   "content-type": "application/octet-stream"},
                 )
 
+                # ---------------- 월별 ----------------
                 if up_kind.startswith("월별"):
-                    month, sales = parse_monthly(io.BytesIO(raw), filename, up_company)
+                    month, sales = parse_monthly(io.BytesIO(raw), filename,
+                                                 up_company)
                     if month is None or sales is None:
                         st.warning(f"⚠ {filename}: 월/판매금액을 못 찾았습니다.")
                         fail += 1
@@ -681,10 +768,29 @@ with tab_upload:
                             "파일명": filename, "월": month,
                         }).execute()
                         ok += 1
+
+                # ---------------- 일별 ----------------
                 else:
-                    date, revenue = parse_daily(io.BytesIO(raw), filename, up_company)
-                    if date is None:
-                        st.warning(f"⚠ {filename}: 파일명에서 날짜를 못 찾았습니다.")
+                    date, revenue, meta = parse_daily(io.BytesIO(raw), filename,
+                                                      up_company)
+
+                    if meta.get("이름"):
+                        st.caption(f"🔎 {filename} → {', '.join(meta['이름'])} "
+                                   f"({', '.join(meta['코드'])}) · "
+                                   f"{meta['행수']}행 · {meta['열수']}열")
+                    if up_company not in VENDOR_TOKENS and meta.get("코드"):
+                        st.warning(f"⚠ '{up_company}'는 업체코드가 미등록입니다. "
+                                   f"위 코드가 맞으면 VENDOR_TOKENS에 추가하세요.")
+                    if meta.get("제외"):
+                        st.warning(f"⚠ 형식이 어긋난 {meta['제외']}행을 "
+                                   f"제외했습니다.")
+
+                    if meta.get("error"):
+                        st.error(f"❌ {filename}: {meta['error']} "
+                                 f"— 저장하지 않았습니다.")
+                        fail += 1
+                    elif date is None or revenue is None:
+                        st.warning(f"⚠ {filename}: 파싱에 실패했습니다.")
                         fail += 1
                     else:
                         if up_company == "남양유업":
@@ -726,7 +832,7 @@ with tab_upload:
 # ----------------------------------------------------------------------
 # 💰 매출 이력
 # ----------------------------------------------------------------------
-with tab_hist:
+if nav == TAB_HIST:
     st.subheader("매출 이력")
     st.caption("DB에 저장된 월별/일별 매출, 미납현황, 공지사항을 표로 조회합니다.")
 
@@ -741,7 +847,7 @@ with tab_hist:
     else:
         c1, c2, c3 = st.columns(3)
         sel_company = c1.selectbox("업체", ["전체"] + COMPANIES,
-                                    key="hist_company")
+                                   key="hist_company")
 
     if view.startswith("월별"):
         df = fetch_monthly()
@@ -762,11 +868,9 @@ with tab_hist:
     if not df.empty:
         all_dates = sorted(df[date_col].unique())
         if len(all_dates) >= 1:
-            sel_from = c2.selectbox("시작", all_dates, index=0,
-                                     key="hist_from")
+            sel_from = c2.selectbox("시작", all_dates, index=0, key="hist_from")
             sel_to = c3.selectbox("종료", all_dates,
-                                   index=len(all_dates) - 1,
-                                   key="hist_to")
+                                  index=len(all_dates) - 1, key="hist_to")
             df = df[(df[date_col] >= sel_from) & (df[date_col] <= sel_to)]
 
     sort_cols = [date_col, "업체"] if "업체" in df.columns else [date_col]
@@ -778,20 +882,14 @@ with tab_hist:
 
     if "id" in df.columns:
         df = df.drop(columns=["id"])
-    if "업로드시각" in df.columns:
-        kst = datetime.timezone(datetime.timedelta(hours=9))
-        df["업로드시각"] = (
-            pd.to_datetime(df["업로드시각"], utc=True, errors="coerce")
-              .dt.tz_convert(kst)
-              .dt.strftime("%Y-%m-%d %H:%M:%S")
-        )
-    if "수정시각" in df.columns:
-        kst = datetime.timezone(datetime.timedelta(hours=9))
-        df["수정시각"] = (
-            pd.to_datetime(df["수정시각"], utc=True, errors="coerce")
-              .dt.tz_convert(kst)
-              .dt.strftime("%Y-%m-%d %H:%M:%S")
-        )
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    for tcol in ("업로드시각", "수정시각"):
+        if tcol in df.columns:
+            df[tcol] = (
+                pd.to_datetime(df[tcol], utc=True, errors="coerce")
+                  .dt.tz_convert(kst)
+                  .dt.strftime("%Y-%m-%d %H:%M:%S")
+            )
 
     if view.startswith("공지"):
         keep_cols = [c for c in ["날짜", "공지내용"] if c in df.columns]
@@ -819,7 +917,7 @@ with tab_hist:
         st.download_button(
             "📥 CSV 다운로드",
             df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
-            file_name=f"{view.split()[0]}_{datetime.date.today().isoformat()}.csv",
+            file_name=f"{view.split()[0]}_{today_kst().isoformat()}.csv",
             mime="text/csv",
         )
 
@@ -827,7 +925,7 @@ with tab_hist:
 # ----------------------------------------------------------------------
 # 🎯 목표 설정 (LG생활건강 · 월별)
 # ----------------------------------------------------------------------
-with tab_target:
+if nav == TAB_TARGET:
     st.subheader("목표 설정")
     st.caption("LG생활건강의 월별 목표 금액을 설정합니다. "
                "이전 목표는 자동으로 DB에 보존됩니다.")
@@ -836,7 +934,7 @@ with tab_target:
 
     sel_target_month = st.text_input(
         "월 (YYYY-MM)",
-        value=datetime.date.today().strftime("%Y-%m"),
+        value=today_kst().strftime("%Y-%m"),
         key="target_month",
     )
 
