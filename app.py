@@ -257,9 +257,11 @@ def parse_daily(buf, filename, company=None):
 
     # 선택한 업체 ↔ 파일 업체 일치 확인 (VENDOR_TOKENS에 등록된 업체만)
     allowed = VENDOR_TOKENS.get(company)
-    if allowed and not (codes & allowed):
-        meta["error"] = f"'{company}' 선택했는데 파일은 {sorted(names)}입니다."
-        return date, None, meta
+    if allowed:
+        allowed = {t.lower() for t in allowed}
+        if not (codes & allowed):
+            meta["error"] = f"'{company}' 선택했는데 파일은 {sorted(names)}입니다."
+            return date, None, meta
 
     total = 0.0
     for row in rows:
