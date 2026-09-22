@@ -114,15 +114,15 @@ SELECTED_CODES = {
 # 일별 CSV 안에 들어있는 업체코드(3번째 열)로 업체를 검증한다.
 # 업로드 화면에 "파일 업체: OOO (코드)" 가 뜨므로, 그 코드를 보고 채워 넣으면 됨.
 VENDOR_TOKENS = {
-    "에너자이저": {"9bs"},
+    "에너자이저": {"9BS"},
     "메디카": {"1fo"},
     "비알코리아": {"3aq"},
     "남양유업": {"060", "b22"},
-    # "LG생활건강": {"???"},
-    # "라벨리": {"???"},
-    # "나사라": {"???"},
-    # "삼립": {"???"},
-    # "티젠": {"???"},
+    "LG생활건강": {"198"},
+    "라벨리": {"220"},
+    "나사라": {"9HH"},
+    "삼립": {"330"},
+    "티젠": {"2co"},
 }
 
 
@@ -470,38 +470,46 @@ if nav == TAB_DASH:
                                     )
 
                         # 월별 막대그래프
+                        # 월별 막대그래프
                         if sdf.empty:
                             st.caption("월별 데이터 없음")
                         else:
                             st.caption("월별 판매금액 (원)")
                             sdf2 = sdf.assign(월라벨=sdf["월"].str[-2:])
-                            base_m = alt.Chart(sdf2).encode(
-                                x=alt.X("월라벨:N", sort=None, title=None,
-                                        axis=alt.Axis(labelAngle=0,
-                                                      labelFontSize=18)),
-                            )
-                            Y_MAX = 2_500_000_000   # 25억 고정
+                            Y_MAX = 2_500_000_000
 
-                            bar = base_m.mark_bar(
-                                color=color, cornerRadiusTopLeft=3,
-                                cornerRadiusTopRight=3, size=35,
-                            ).encode(
-                                y=alt.Y("판매금액:Q", title=None, axis=None,
-                                        scale=alt.Scale(domain=[0, Y_MAX])),
-                                tooltip=[alt.Tooltip("월:N"),
-                                         alt.Tooltip("판매금액:Q", format=",")],
-                            )
-                            text = base_m.mark_text(
-                                dy=-8, fontSize=11, color="#333",
-                            ).encode(
-                                y=alt.Y("판매금액:Q",
-                                        scale=alt.Scale(domain=[0, Y_MAX])),
-                                text=alt.Text("판매금액:Q", format=","),
-                            )
-                            st.altair_chart(
-                                alt.layer(bar, text).properties(height=220),
-                                use_container_width=True,
-                            )
+                            def draw_month_chart(data):
+                                base_m = alt.Chart(data).encode(
+                                    x=alt.X("월라벨:N", sort=None, title=None,
+                                            axis=alt.Axis(labelAngle=0, labelFontSize=18)),
+                                )
+                                bar = base_m.mark_bar(
+                                    color=color, cornerRadiusTopLeft=3,
+                                    cornerRadiusTopRight=3, size=35,
+                                ).encode(
+                                    y=alt.Y("판매금액:Q", title=None, axis=None,
+                                            scale=alt.Scale(domain=[0, Y_MAX])),
+                                    tooltip=[alt.Tooltip("월:N"),
+                                            alt.Tooltip("판매금액:Q", format=",")],
+                                )
+                                text = base_m.mark_text(
+                                    dy=-8, fontSize=11, color="#333",
+                                ).encode(
+                                    y=alt.Y("판매금액:Q", scale=alt.Scale(domain=[0, Y_MAX])),
+                                    text=alt.Text("판매금액:Q", format=","),
+                                )
+                                st.altair_chart(alt.layer(bar, text).properties(height=220),
+                                                use_container_width=True)
+
+                            h1 = sdf2[sdf2["월라벨"].astype(int) <= 6]
+                            h2 = sdf2[sdf2["월라벨"].astype(int) >= 7]
+
+                            if not h1.empty:
+                                draw_month_chart(h1)
+                            if not h2.empty:
+                                draw_month_chart(h2)
+                        
+                        
             # 행 사이 여백
             st.write("")
 
