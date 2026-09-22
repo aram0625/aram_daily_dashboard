@@ -469,47 +469,73 @@ if nav == TAB_DASH:
                                         unsafe_allow_html=True,
                                     )
 
-                        # 월별 막대그래프
-                        # 월별 막대그래프
+                        # 월별 막대그래프 0922 수정
                         if sdf.empty:
                             st.caption("월별 데이터 없음")
                         else:
-                            st.caption("월별 판매금액 (원)")
-                            sdf2 = sdf.assign(월라벨=sdf["월"].str[-2:])
-                            Y_MAX = 2_500_000_000
+                            year_key = f"chart_year_{name}"
+                            if year_key not in st.session_state:
+                                st.session_state[year_key] = int(today_kst().strftime("%Y"))
 
-                            def draw_month_chart(data):
-                                base_m = alt.Chart(data).encode(
-                                    x=alt.X("월라벨:N", sort=None, title=None,
-                                            axis=alt.Axis(labelAngle=0, labelFontSize=18)),
-                                )
-                                bar = base_m.mark_bar(
-                                    color=color, cornerRadiusTopLeft=3,
-                                    cornerRadiusTopRight=3, size=35,
-                                ).encode(
-                                    y=alt.Y("판매금액:Q", title=None, axis=None,
-                                            scale=alt.Scale(domain=[0, Y_MAX])),
-                                    tooltip=[alt.Tooltip("월:N"),
-                                            alt.Tooltip("판매금액:Q", format=",")],
-                                )
-                                text = base_m.mark_text(
-                                    dy=-8, fontSize=11, color="#333",
-                                ).encode(
-                                    y=alt.Y("판매금액:Q", scale=alt.Scale(domain=[0, Y_MAX])),
-                                    text=alt.Text("판매금액:Q", format=","),
-                                )
-                                st.altair_chart(alt.layer(bar, text).properties(height=220),
-                                                use_container_width=True)
+                            sel_year = st.session_state[year_key]
 
-                            h1 = sdf2[sdf2["월라벨"].astype(int) <= 6]
-                            h2 = sdf2[sdf2["월라벨"].astype(int) >= 7]
+                            yc1, yc2, yc3 = st.columns([1, 2, 1])
+                            with yc1:
+                                if st.button("◀", key=f"prev_{name}"):
+                                    st.session_state[year_key] -= 1
+                                    st.rerun()
+                            with yc2:
+                                st.markdown(
+                                    f"<div style='text-align:center; font-weight:600'>{sel_year}년</div>",
+                                    unsafe_allow_html=True,
+                                )
+                            with yc3:
+                                if st.button("▶", key=f"next_{name}",
+                                            disabled=(sel_year >= int(today_kst().strftime("%Y")))):
+                                    st.session_state[year_key] += 1
+                                    st.rerun()
 
-                            if not h1.empty:
-                                draw_month_chart(h1)
-                            if not h2.empty:
-                                draw_month_chart(h2)
-                        
-                        
+                            sdf2 = sdf[sdf["월"].str[:4] == str(sel_year)].assign(
+                                월라벨=lambda d: d["월"].str[-2:]
+                            )
+
+                            if sdf2.empty:
+                                st.caption(f"{sel_year}년 데이터 없음")
+                            else:
+                                st.caption("월별 판매금액 (원)")
+                                Y_MAX = 2_500_000_000
+
+                                def draw_month_chart(data):
+                                    base_m = alt.Chart(data).encode(
+                                        x=alt.X("월라벨:N", sort=None, title=None,
+                                                axis=alt.Axis(labelAngle=0, labelFontSize=18)),
+                                    )
+                                    bar = base_m.mark_bar(
+                                        color=color, cornerRadiusTopLeft=3,
+                                        cornerRadiusTopRight=3, size=35,
+                                    ).encode(
+                                        y=alt.Y("판매금액:Q", title=None, axis=None,
+                                                scale=alt.Scale(domain=[0, Y_MAX])),
+                                        tooltip=[alt.Tooltip("월:N"),
+                                                alt.Tooltip("판매금액:Q", format=",")],
+                                    )
+                                    text = base_m.mark_text(
+                                        dy=-8, fontSize=11, color="#333",
+                                    ).encode(
+                                        y=alt.Y("판매금액:Q", scale=alt.Scale(domain=[0, Y_MAX])),
+                                        text=alt.Text("판매금액:Q", format=","),
+                                    )
+                                    st.altair_chart(alt.layer(bar, text).properties(height=220),
+                                                    use_container_width=True)
+
+                                h1 = sdf2[sdf2["월라벨"].astype(int) <= 6]
+                                h2 = sdf2[sdf2["월라벨"].astype(int) >= 7]
+
+                                if not h1.empty:
+                                    draw_month_chart(h1)
+                                if not h2.empty:
+                                    draw_month_chart(h2)
+                         
             # 행 사이 여백
             st.write("")
 
@@ -634,6 +660,7 @@ if nav == TAB_DASH:
         by_company = {r["업체"]: r for _, r in existing.iterrows()} \
                      if not existing.empty else {}
 
+        
         table_df = pd.DataFrame({
             "업체명": MEMO_COMPANIES,
             "미납여부": [bool(by_company.get(c, {}).get("미납여부", False))
@@ -644,21 +671,23 @@ if nav == TAB_DASH:
                          for c in MEMO_COMPANIES],
         })
 
-        edited = st.data_editor(
-            table_df,
-            key=f"memo_table_{date_key}",   # 날짜별로 key 분리
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "업체명": st.column_config.TextColumn("업체명", disabled=True),
-                "미납여부": st.column_config.CheckboxColumn("미납", width="small"),
-                "미납내용": st.column_config.TextColumn("미납내용", width="medium"),
-                "조치항목": st.column_config.TextColumn("조치항목", width="medium"),
-            },
+        #0922 수정
+        with st.form(key=f"memo_form_{date_key}"):
+            edited = st.data_editor(
+                table_df,
+                key=f"memo_table_{date_key}",
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "업체명": st.column_config.TextColumn("업체명", disabled=True),
+                    "미납여부": st.column_config.CheckboxColumn("미납", width="small"),
+                    "미납내용": st.column_config.TextColumn("미납내용", width="medium"),
+                    "조치항목": st.column_config.TextColumn("조치항목", width="medium"),
+                },
         )
+            submitted = st.form_submit_button("💾 미납현황 저장")
 
-        # 미납체크 안돼도, 내용/조치항목 있으면 업체별로 저장
-        if st.button("💾 미납현황 저장", key="save_memo"):
+        if submitted:
             try:
                 payload = []
                 for _, r in edited.iterrows():
@@ -678,7 +707,7 @@ if nav == TAB_DASH:
                     st.warning("입력된 업체가 없습니다.")
                 else:
                     sb.table("memos").upsert(payload,
-                                             on_conflict="날짜,업체").execute()
+                                            on_conflict="날짜,업체").execute()
                     invalidate_cache()
                     st.success(f"{date_key} 미납현황을 저장했습니다.")
                     st.rerun()
