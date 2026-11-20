@@ -114,15 +114,13 @@ SELECTED_CODES = {
 # 일별 CSV 안에 들어있는 업체코드(3번째 열)로 업체를 검증한다.
 # 업로드 화면에 "파일 업체: OOO (코드)" 가 뜨므로, 그 코드를 보고 채워 넣으면 됨.
 VENDOR_TOKENS = {
-    "에너자이저코리아": {"9bs"},
-    "에너자이저": {"9bs"},
+    "에너자이저": {"9BS"},
     "메디카": {"1fo"},
     "비알코리아": {"3aq"},
     "남양유업": {"060", "b22"},
     "LG생활건강": {"198"},
     "라벨리": {"220"},
     "주식회사 나사라": {"9hh"},
-    "나사라": {"9hh"},
     "삼립": {"330"},
     "티젠": {"2co"},
 }
@@ -164,9 +162,18 @@ def company_code(name: str) -> str:
 # 파서
 # ----------------------------------------------------------------------
 def parse_monthly(buf, filename, company=None):
-    ext = filename.lower().split(".")[-1]
-    engine = "xlrd" if ext == "xls" else "openpyxl"
-    df = pd.read_excel(buf, engine=engine, header=None)
+    raw = buf.getvalue()
+    head = raw[:8]
+    if head.startswith(b"PK"):                      # 진짜 xlsx
+        df = pd.read_excel(io.BytesIO(raw), engine="openpyxl", header=None)
+    elif head.startswith(b"\xd0\xcf\x11\xe0"):     # 진짜 xls
+        try:
+            df = pd.read_excel(io.BytesIO(raw), engine="xlrd", header=None)
+        except Exception:                           # 비표준 xls → calamine
+            df = pd.read_excel(io.BytesIO(raw), engine="calamine", header=None)
+    else:                                           # 웹페이지(HTML) 형식
+        df = pd.read_html(io.BytesIO(raw), encoding="cp949")[0]
+        df.columns = range(df.shape[1])
     nrows = len(df)
 
     month = None
@@ -201,7 +208,7 @@ def parse_monthly(buf, filename, company=None):
             if str(code).strip() in selected and i + 1 < nrows:
                 v = df.iloc[i + 1, sales_col]
                 if pd.notna(v):
-                    s += int(v)
+                    s += int(_num(v))
         total = s
     else:
         for i in range(nrows):
@@ -210,7 +217,7 @@ def parse_monthly(buf, filename, company=None):
                 if sales_col is not None and i + 1 < nrows:
                     val = df.iloc[i + 1, sales_col]
                     if pd.notna(val):
-                        total = int(val)
+                        total = int(_num(val))
                 break
 
     return month, total
