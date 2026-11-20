@@ -1,7 +1,9 @@
-streamlit
-pandas
-altair
-xlrd
-openpyxl
-supabase
+streamlit
+pandas
+altair
+xlrd
+openpyxl
+supabase
 streamlit-autorefresh
+python-calamine
+lxml
